@@ -48,10 +48,8 @@ int main(int argc, char** argv) {
 
         // Send a message from server back to client
         char server_message[256] = "You have reached the server!";
-//        strcat(server_message, recv_message);
         send(client_socket, server_message, sizeof (server_message), 0);
     }
-
 
     close(server_socket);
 
@@ -62,11 +60,15 @@ void setup_sock_bind(int *server_socket, int port_num) {
     *server_socket = socket(AF_INET, SOCK_STREAM, 0);
 
     struct sockaddr_in server_address;
+    unsigned long s_addr = 1000;
+    
     server_address.sin_family = AF_INET;
     server_address.sin_port = htons(port_num);
     server_address.sin_addr.s_addr = INADDR_ANY;
-
+    
     bind(*server_socket, (struct sockaddr*) &server_address, sizeof (server_address));
+//    printf("Hello here!");
+
 }
 
 void poll_for_client_connection(int* client_socket, int server_socket) {
