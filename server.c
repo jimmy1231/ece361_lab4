@@ -4,7 +4,7 @@
  * and open the template in the editor.
  */
 
-/* 
+/*
  * File:   main.c
  * Author: lijing53
  *
@@ -22,7 +22,7 @@
 
 #define DEBUG(fmt, args...) (printf(fmt, ##args))
 /*
- * 
+ *
  */
 
 void setup_sock_bind(int *, int);
@@ -40,19 +40,22 @@ int main(int argc, char** argv) {
     int client_socket;
     poll_for_client_connection(&client_socket, server_socket);
 
+    // No implementation of server yet, this code is to redundantly authenticate users who
+    // attempt an authentication request (if reply is AUTH then client will know they
+    // are authenticated), keep in mind this is AFTER the TCP 3-Way handshake
     while (1) {
-        // Wait 
+        // Wait
         char recv_message[256];
         int recv_size = recv(client_socket, &recv_message, sizeof (recv_message), 0);
-        DEBUG("Received Message from Client, Size: %d, Content: %s\n", recv_size, recv_message);
+        DEBUG("Received authentication request from client, Size: %d, Content: %s\n", recv_size, recv_message);
 
-        // Send a message from server back to client
-        char server_message[256] = "You have reached the server!";
+        // Send AUTH back to client
+        char server_message[256] = "AUTH";
         send(client_socket, server_message, sizeof (server_message), 0);
     }
 
-    close(server_socket);
-
+    // Graceful close, Flag=2 means stop sending and receiving messages from this connection
+    shutdown(server_socket, 2);
     return 0;
 }
 
@@ -61,11 +64,11 @@ void setup_sock_bind(int *server_socket, int port_num) {
 
     struct sockaddr_in server_address;
     unsigned long s_addr = 1000;
-    
+
     server_address.sin_family = AF_INET;
     server_address.sin_port = htons(port_num);
     server_address.sin_addr.s_addr = INADDR_ANY;
-    
+
     bind(*server_socket, (struct sockaddr*) &server_address, sizeof (server_address));
 //    printf("Hello here!");
 
