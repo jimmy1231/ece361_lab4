@@ -25,6 +25,7 @@
 #define PRIVATE 4
 #define LIST 5
 #define MSG_SIZE 256
+#define CONNECTION_TIMEOUT 5
 
 #define DEBUG(fmt, args...) (printf(fmt, ##args))
 
@@ -33,7 +34,7 @@
  */
 
 void setup_sock();
-int setup_connection(struct sockaddr_in *, int);
+int setup_connection(struct sockaddr_in *, int, char *);
 void get_command(char []);
 int parse_command(char []);
 
@@ -50,18 +51,19 @@ int main(int argc, char** argv) {
 //    int server_addr = atoi(argv[1]);
 //    int server_port = atoi(argv[2]);
 //    char *user_name = argv[3];
+    char *mock_username = "Jimmy";
 //    DEBUG("Config Parameters:\n   Server Address: %d\n   Server Port: %d\n   User Name: %s\n", server_addr, server_port, user_name);
     
-    // create a socket 
+    // create a socket
     setup_sock();
     
     // connect to server
     struct sockaddr_in server_address;
-    int connection_status = setup_connection(&server_address, client_socket);
+    int connection_status = setup_connection(&server_address, client_socket, mock_username);
     
     // check for error with the connection
     if (connection_status == -1) {
-        DEBUG("There was an error making a connection to the remote socket \n\n");
+        DEBUG("There was an error making a connection to the remote socket, exiting... \n\n");
         
     } else {
         DEBUG("Connection Established!\n");
@@ -81,13 +83,43 @@ void setup_sock() {
     client_socket = socket(AF_INET, SOCK_STREAM, 0);
 }
 
-int setup_connection(struct sockaddr_in * server_address, int client_socket) {
+int setup_connection(struct sockaddr_in * server_address, int client_socket, char *username) {
      // connect to server
     server_address->sin_family = AF_INET;
     server_address->sin_port = htons(9002);
     server_address->sin_addr.s_addr = INADDR_ANY;
-
-    return connect(client_socket, (struct sockaddr *) server_address, sizeof (*server_address));
+    
+    int connection_status = connect(client_socket, (struct sockaddr *) server_address, sizeof (*server_address));
+    
+    if (connection_status > 0) {
+        /* Do User-Server Authentication: try attempting pinging server for authentication of username
+         *
+         *  (timeout on 5 attempts), then interpret response, if AUTH, then username exists, if not
+         *  it is an invalid user
+        */
+        char server_response[MSG_SIZE];
+        
+        DEBUG("Attempting to authenticate user: %s", username);
+        
+        int connection_attempt = 0;
+        while (send(client_socket, username, MSG_SIZE, 0) < 0 && connection_attempt < CONNECTION_TIMEOUT) {
+            DEBUG("Send Failure, trying again...\n");
+        }
+        
+        if (connection_attempt < 5) return -1;
+        
+        recv(client_socket, &server_response, sizeof (server_response), 0);
+        char auth[256] = "AUTH"; 
+        if (strcmp(server_response, auth) != 0) {
+            printf("Authentication Failure: %s\n", server_response);
+        }
+        
+        return 1;
+    } 
+    else {
+        DEBUG("Failed to connect to server\n");
+        return -1;
+    };
 }
 
 void get_command(char command[MSG_SIZE]) {
