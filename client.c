@@ -4,13 +4,12 @@
  * and open the template in the editor.
  */
 
-/* 
+/*
  * File:   main.c
  * Author: lijing53
  *
  * Created on February 15, 2018, 1:39 PM
  */
-
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,7 +29,7 @@
 #define DEBUG(fmt, args...) (printf(fmt, ##args))
 
 /*
- * 
+ *
  */
 
 void setup_sock();
@@ -53,28 +52,29 @@ int main(int argc, char** argv) {
 //    char *user_name = argv[3];
     char *mock_username = "Jimmy";
 //    DEBUG("Config Parameters:\n   Server Address: %d\n   Server Port: %d\n   User Name: %s\n", server_addr, server_port, user_name);
-    
+
     // create a socket
     setup_sock();
-    
+
     // connect to server
     struct sockaddr_in server_address;
     int connection_status = setup_connection(&server_address, client_socket, mock_username);
-    
+
     // check for error with the connection
     if (connection_status == -1) {
         DEBUG("There was an error making a connection to the remote socket, exiting... \n\n");
-        
+
     } else {
-        DEBUG("Connection Established!\n");
+        DEBUG("Connection Established! Welcome %s\n", mock_username);
         while (1) {
             char command[MSG_SIZE];
-            
+
             get_command(command);
             if (!parse_command(command)) break;
         }
     }
-    
+
+    // Graceful close, Flag=2 means stop sending and receiving messages from this connection
     shutdown(client_socket, 2);
     return 0;
 }
@@ -88,34 +88,39 @@ int setup_connection(struct sockaddr_in * server_address, int client_socket, cha
     server_address->sin_family = AF_INET;
     server_address->sin_port = htons(9002);
     server_address->sin_addr.s_addr = INADDR_ANY;
-    
+
     int connection_status = connect(client_socket, (struct sockaddr *) server_address, sizeof (*server_address));
-    
-    if (connection_status > 0) {
+
+    if (connection_status >= 0) {
         /* Do User-Server Authentication: try attempting pinging server for authentication of username
          *
          *  (timeout on 5 attempts), then interpret response, if AUTH, then username exists, if not
          *  it is an invalid user
         */
         char server_response[MSG_SIZE];
-        
-        DEBUG("Attempting to authenticate user: %s", username);
-        
-        int connection_attempt = 0;
-        while (send(client_socket, username, MSG_SIZE, 0) < 0 && connection_attempt < CONNECTION_TIMEOUT) {
+        DEBUG("Unauthenticated connection to server successful, attempting to authenticate user: %s\n", username);
+
+        int send_attempts = 0;
+        while (send(client_socket, username, sizeof(username), 0) < 0 && send_attempts < CONNECTION_TIMEOUT) {
             DEBUG("Send Failure, trying again...\n");
+            send_attempts++;
         }
-        
-        if (connection_attempt < 5) return -1;
-        
+
+        DEBUG("Authentication resend attempts: %d\n", send_attempts);
+        if (send_attempts == CONNECTION_TIMEOUT) return -1;
+
         recv(client_socket, &server_response, sizeof (server_response), 0);
-        char auth[256] = "AUTH"; 
+        char auth[256] = "AUTH";
+
         if (strcmp(server_response, auth) != 0) {
-            printf("Authentication Failure: %s\n", server_response);
+            printf("Authentication Failure: %s\n", (char *)server_response);
+            return -1;
         }
-        
-        return 1;
-    } 
+        else {
+          DEBUG("Connection successful, Username: %s. Server Response: %s\n\n", username, server_response);
+          return 1;
+        }
+    }
     else {
         DEBUG("Failed to connect to server\n");
         return -1;
@@ -123,10 +128,10 @@ int setup_connection(struct sockaddr_in * server_address, int client_socket, cha
 }
 
 void get_command(char command[MSG_SIZE]) {
-    printf("Enter message you want to send (Max. 128 chars):");
+    printf("Enter message you want to send (Max. 256 chars): ");
     fgets(command, MSG_SIZE, stdin);
     printf("\n");
-    
+
     // fgets adds \n to each read character, this line removes that
     command[strcspn(command, "\n")] = '\0';
 }
@@ -142,30 +147,28 @@ int is_broadcast(char *command) {
 }
 
 void handle_broadcast() {
-    
+
     char message[MSG_SIZE] = "";
-    char *token = strtok(NULL, " "); 
+    char *token = strtok(NULL, " ");
 
     while (token != NULL) {
-        
         strcat(message, token);
         strcat(message, " ");
-        
+
         token = strtok(NULL, " ");
     }
-    
+
     send_to_server(BROADCAST, message);
 }
 
 void handle_pmessage() {
     char *username = strtok(NULL, " ");
-    
 }
 
 /*
  * is_exit(): Returns 0 if True
- * is_broadcast(): 
- *  
+ * is_broadcast():
+ *
  * Quick Note on strtok: everytime we call it truncates the original string
  */
 
@@ -174,23 +177,25 @@ int parse_command(char command[MSG_SIZE]) {
     char *cmd = strtok(command, " ");
 
     if (is_exit(cmd)) {
-        return 0; 
+        return 0;
     }
     else if (is_broadcast(cmd)) {
         handle_broadcast();
+        return 1;
     }
     else {
         handle_pmessage();
+        return 1;
     }
 }
 
 int send_to_server(int type, char *message) {
     char server_response[MSG_SIZE];
-    
+
     if (type == BROADCAST) {
         DEBUG("BROADCAST message: %s\n", message);
         int send_status = send(client_socket, message, MSG_SIZE, 0);
-        
+
         if (send_status > 0) {
             // receive data from the server:
             recv(client_socket, &server_response, sizeof (server_response), 0);
@@ -198,7 +203,7 @@ int send_to_server(int type, char *message) {
         } else {
             DEBUG("[BROADCAST]: SOMETHING WENT WRONGGGGG :(");
         }
-    } 
+    }
     else if (type == PRIVATE) {
         DEBUG("Sending PRIVATE message: %s\n", message);
     }
