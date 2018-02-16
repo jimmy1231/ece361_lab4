@@ -79,4 +79,3 @@ void poll_for_client_connection(int* client_socket, int server_socket) {
     DEBUG("Connection has been established from: %d\n");
 
 }
-
