@@ -31,10 +31,6 @@
 
 #define DEBUG(fmt, args...) (printf(fmt, ##args))
 
-/*
- *
- */
-
 void setup_sock();
 int setup_connection(struct sockaddr_in *, int, int, char *);
 void get_command(char []);
@@ -60,11 +56,12 @@ int client_socket;
 int auth = -1;
 int ready = 0;
 
+
 int main(int argc, char** argv) {
    int server_addr = atoi(argv[1]);
    int server_port = atoi(argv[2]);
    char *mock_username = argv[3];
-   DEBUG("Config Parameters:\n   Server Address: %d\n   Server Port: %d\n   User Name: %s\n", server_addr, server_port, mock_username);
+   DEBUG("Config Parameters:\n   Server Address: %d\n   Server Port: %d\n   User Name: %s\n\n", server_addr, server_port, mock_username);
 
     pthread_t listen;
     struct sockaddr_in server_address;
@@ -114,7 +111,10 @@ void *listen_to_server(void *ptr) {
         ready = 1;
         auth = 1;
       }
-    } else {
+    } else if (strstr(server_response, "PRIVATE ERROR")) {
+      printf("PRIVATE MESSAGE ERROR: The user you are trying to message is not registered.\n");
+    }
+    else {
       DEBUG("Server Raw Response: %s\n", server_response);
       int type = get_message_command(server_response, response_body);
       print_response(type, response_body);
@@ -222,14 +222,7 @@ void handle_list() {
     send_to_server(LIST, NULL);
 }
 
-/*
- * is_exit(): Returns 0 if True
- * is_broadcast():
- *
- * Quick Note on strtok: everytime we call it truncates the original string
- */
 int parse_command(char command[MSG_SIZE]) {
-
     char *cmd = strtok(command, " ");
 
     if (is_exit(cmd)) {
@@ -254,17 +247,15 @@ int send_to_server(int type, char *body) {
     DEBUG("Client Request: %s\n", send_message);
     int send_status = send(client_socket, send_message, MSG_SIZE, 0);
 
-    if (type == BROADCAST) {
+    if (type == BROADCAST)
         if (send_status < 0)
           DEBUG("[BROADCAST]: SOMETHING WENT WRONGGGGG :(");
-    } else if (type == PRIVATE) {
+    else if (type == PRIVATE)
         if (send_status < 0)
           DEBUG("[PRIVATE]: SOMETHING WENT WRONGGGG :(");
-
-    } else if (type == LIST) {
+    else if (type == LIST)
         if (send_status < 0)
           DEBUG("[LIST]: SOMETHING WENT WRONGGGG :(");
-    }
 }
 
 void print_response(int type, char *server_response) {
