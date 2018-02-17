@@ -27,7 +27,7 @@
 #define LIST 5
 #define MSG_SIZE 256
 #define CONNECTION_TIMEOUT 5
-#define PTHREAD_WAIT 4000000000
+#define PTHREAD_WAIT 40000000
 
 #define DEBUG(fmt, args...) (printf(fmt, ##args))
 
