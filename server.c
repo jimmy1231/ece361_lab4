@@ -45,13 +45,14 @@ int parse_command(char *, char *);
 void handle_request(int, char*, fd_set *, int, int, User **, int, int *);
 void handle_broadcast(fd_set *, char*, int, int, int, User **, int);
 void handle_authenticate(char*, fd_set *, User **, int *, int);
+void handle_list(User **, int, int);
 
 int user_found(User **, char*, int);
 void print_errythang(User **, int);
 
 void remove_user(User **, int, int*);
 int find_usr_sockID(User **, int, int);
-int test();
+
 
 int main(int argc, char** argv) {
 //    DEBUG("arg[1]: %s\n", argv[1]);
@@ -207,7 +208,28 @@ void handle_request(int cmd, char * msg_body, fd_set * master, int fdmax, int se
       DEBUG("CMD: PRIVATE\n");
   }
   else if (cmd == LIST) {
+      handle_list(users, client_socket, *user_id);
       DEBUG("CMD: LIST\n");
+  }
+}
+
+void handle_list(User ** users, int send_to, int user_id) {
+  int i = 0;
+  char user_list[256];
+  strcpy(user_list, "LIST");
+
+  // Create user_list string
+  for (i = 0; i < user_id; i++) {
+      strcat(user_list, " ");
+      strcat(user_list, users[i]->user_name);
+  }
+
+  // Send user list to send_to socket
+  int send_status = send(send_to, user_list, MSG_SIZE, 0);
+  if (send_status == -1) {
+      DEBUG("ERROR SENDING USER LIST TO: %d!!\n", send_to);
+  } else {
+      DEBUG("SENDING OUT USERS: \n%s\n", user_list);
   }
 }
 
@@ -265,9 +287,9 @@ void handle_broadcast(fd_set * master, char* msg_body, int fdmax, int server_soc
     char complete_msg[256];
 
     int sender_id = find_usr_sockID(users, sender, user_id);
-    strcpy(complete_msg, "\nBROADCAST: user_name: ");
+    strcpy(complete_msg, "BROADCAST ");
     strcat(complete_msg, users[sender_id]->user_name);
-    strcat(complete_msg, "\n Message: ");
+    strcat(complete_msg, " ");
     strcat(complete_msg, msg_body);
 
     for (i = 0; i <= fdmax; i++) {
