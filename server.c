@@ -49,6 +49,10 @@ void handle_authenticate(char*, fd_set *, User **, int *, int);
 int user_found(User **, char*, int);
 void print_errythang(User **, int);
 
+void remove_user(User **, int, int*);
+int find_usr_sockID(User **, int, int);
+int test();
+
 int main(int argc, char** argv) {
 //    DEBUG("arg[1]: %s\n", argv[1]);
 
@@ -113,9 +117,13 @@ int main(int argc, char** argv) {
               // Receive data from client and send AUTH upon success
               int recv_size = recv(c_sock, &recv_message, sizeof (recv_message), 0);
               if (recv_size == -1 ) {
-                DEBUG("ERROR RECEIVING MESSAGE FROM %d\n\n", c_sock);
-                FD_CLR(c_sock, &master);
-              } else {
+                  DEBUG("ERROR RECEIVING MESSAGE FROM %d\n\n", c_sock);
+                  FD_CLR(c_sock, &master);
+              } else if (recv_size == 0) {
+                  DEBUG("CONNECTION TO: %d IS CLOSED!!\n", c_sock);
+                  FD_CLR(c_sock, &master);
+                  remove_user(users, c_sock, &user_id);
+              }  else {
 
                 /*
                  * cmd: 'BROADCAST', 'AUTHENTICATE', 'PRIVATE', 'LIST'
@@ -133,6 +141,36 @@ int main(int argc, char** argv) {
     // Graceful close, Flag=2 means stop sending and receiving messages from this connection
     shutdown(server_socket, 2);
     return 0;
+}
+
+void remove_user(User ** users, int c_sock, int *user_id) {
+    int id = find_usr_sockID(users, c_sock, *user_id);
+    DEBUG("REMOVING USER: %d | SOCKET_ID: %d | USER_NAME: %s\n", id, c_sock, users[id]->user_name);
+    int i = 0;
+    free(users[i]);
+    for (i = id; i < *user_id; i++) {
+        if (i+1 != *user_id) {
+            users[i] = users[i+1];
+        }
+    }
+    users[*user_id - 1] = NULL;
+    *user_id = *user_id - 1;
+    print_errythang(users, *user_id);
+}
+
+/*
+ * Given a client socket id, return the index of the user in 'users' array
+ */
+int find_usr_sockID(User ** users, int c_sock, int user_id) {
+    int i = 0;
+    int found_id = -1;
+    for (i = 0; i < user_id; i++) {
+      if (c_sock == users[i]->socket_id){
+          found_id = i;
+          break;
+      }
+    }
+    return found_id;
 }
 
 int parse_command(char * rcv_msg, char * msg_body) {
@@ -227,7 +265,6 @@ void handle_broadcast(fd_set * master, char* msg_body, int fdmax, int server_soc
     for (i = 0; i <= fdmax; i++) {
       if (FD_ISSET(i, master)) {
           if (i != server_socket) {
-            DEBUG("SENDING '%s' TO: %d\n", msg_body, i);
             if (send(i, msg_body, MSG_SIZE, 0) == -1){
                 DEBUG("ERROR SENDING BROADCAST TO: %d\n\n", i);
             }
