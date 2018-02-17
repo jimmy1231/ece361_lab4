@@ -24,20 +24,36 @@
 #define BROADCAST 3
 #define PRIVATE 4
 #define LIST 5
+#define MSG_SIZE 256
+#define MAX_USERS 10
 
 #define DEBUG(fmt, args...) (printf(fmt, ##args))
 /*
  *
  */
 
+ typedef struct {
+     char * user_name;
+     int socket_id;
+
+ } User;
+
 void setup_sock_bind(int *, int);
 void poll_for_client_connection(int *, int);
 
 int parse_command(char *, char *);
-void handle_request(int, char*);
+void handle_request(int, char*, fd_set *, int, int, User **, int, int *);
+void handle_broadcast(fd_set *, char*, int, int);
+void handle_authenticate(char*, fd_set *, User **, int *, int);
+
+int user_found(User **, char*, int);
 
 int main(int argc, char** argv) {
 //    DEBUG("arg[1]: %s\n", argv[1]);
+
+    // Create list of users
+    User *users[MAX_USERS];
+    int user_id = 0;    // Keep track of how many users are connected
 
     // Setup fd_sets for concurrency
     fd_set master;
@@ -106,11 +122,10 @@ int main(int argc, char** argv) {
                  */
 
                 int cmd = parse_command(recv_message, msg_body);
-                handle_request(cmd, msg_body);
+                handle_request(cmd, msg_body, &master, fdmax, server_socket, users, c_sock, &user_id);
                 strcpy(msg_body, "");
 
                 DEBUG("Received authentication request from client: %d, Content: %s\n", c_sock, recv_message);
-                send(c_sock, server_message, sizeof(server_message), 0);
               }
             }
           }
@@ -143,11 +158,13 @@ int parse_command(char * rcv_msg, char * msg_body) {
     return cmd_num;
 }
 
-void handle_request(int cmd, char * msg_body) {
+void handle_request(int cmd, char * msg_body, fd_set * master, int fdmax, int server_socket, User **users, int client_socket, int * user_id) {
   if (cmd == AUTHENTICATE){
       DEBUG("CMD: AUTHENTICATE\nUSER_NAME: %s\n", msg_body);
+      handle_authenticate(msg_body, master, users, user_id, client_socket);
   }
   else if (cmd == BROADCAST) {
+      handle_broadcast(master, msg_body, fdmax, server_socket);
       DEBUG("CMD: BROADCAST\nBODY: %s\n", msg_body);
   }
   else if (cmd == PRIVATE) {
@@ -156,6 +173,57 @@ void handle_request(int cmd, char * msg_body) {
   else if (cmd == LIST) {
       DEBUG("CMD: LIST\n");
   }
+}
+
+void handle_authenticate(char* msg_body, fd_set * master, User ** users, int * user_id, int c_sock){
+    char server_message[256] = "AUTH";
+
+    //1. Add user to 'users' array if user_name not found in list of users
+    if (*user_id == 0 || !user_found(users, msg_body, *user_id + 1)){
+
+        User * new_user = malloc(sizeof(User));
+        users[*user_id] = new_user;
+        users[*user_id] -> user_name = msg_body;
+        users[*user_id] -> socket_id = c_sock;
+
+        DEBUG("ADDING USER TO 'users': \n");
+        DEBUG("user_name: %s  |  socket_id: %d  |  user_count: %d \n\n", users[*user_id] -> user_name, users[*user_id] -> socket_id, *user_id);
+        send(c_sock, server_message, sizeof(server_message), 0);
+
+        *user_id += 1;
+        // TO-DO: BROADCAST to all connected users
+        
+    } else {
+        printf("AUTHENTICATION ERROR: User_name %s is already taken :( \n\n", msg_body);
+        FD_CLR(c_sock, master);
+    }
+}
+
+int user_found(User ** users, char* user_name, int num_users) {
+    int i = 0;
+    for (i = 0; i < num_users; i++) {
+        if (strcmp(users[i]->user_name, user_name) == 0){
+          return 1;
+        }
+    }
+    return 0;
+}
+
+/*
+ * Sends 'msg_body' to all connected users
+ */
+void handle_broadcast(fd_set * master, char* msg_body, int fdmax, int server_socket) {
+    int i = 0;
+    for (i = 0; i <= fdmax; i++) {
+      if (FD_ISSET(i, master)) {
+          if (i != server_socket) {
+            DEBUG("SENDING '%s' TO: %d\n", msg_body, i);
+            if (send(i, msg_body, MSG_SIZE, 0) == -1){
+                DEBUG("ERROR SENDING BROADCAST TO: %d\n\n", i);
+            }
+          }
+      }
+    }
 }
 
 void setup_sock_bind(int *server_socket, int port_num) {
