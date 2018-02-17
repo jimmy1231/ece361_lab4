@@ -42,10 +42,14 @@ int parse_command(char []);
 
 int is_exit(char *);
 int is_broadcast(char *);
+int is_pmessage(char *);
+int is_list(char *);
 void handle_broadcast();
 int send_to_server(int, char *);
 void handle_pmessage();
-void print_response(char *);
+void handle_list();
+void print_response(int, char *);
+int get_message_command(char *, char *);
 
 void format_message(int, char *, char *);
 int authenticate(char *);
@@ -64,29 +68,19 @@ int main(int argc, char** argv) {
 //    DEBUG("Config Parameters:\n   Server Address: %d\n   Server Port: %d\n   User Name: %s\n", server_addr, server_port, user_name);
 
     pthread_t listen;
-    // create a socket
-    setup_sock();
-
-    // connect to server
     struct sockaddr_in server_address;
 
-    int x = 0;
-    if (pthread_create(&listen, NULL, listen_to_server, &x)) {
-      DEBUG("Error Creating Thread\n");
-    }
-
+    setup_sock();
+    pthread_create(&listen, NULL, listen_to_server, NULL);
     int connection_status = setup_connection(&server_address, client_socket, mock_username);
 
-    // check for error with the connection
     if (connection_status == -1) {
         DEBUG("There was an error making a connection to the remote socket, exiting... \n\n");
         pthread_cancel(listen);
     } else {
         DEBUG("Connection Established! Welcome %s\n", mock_username);
-
         while (1) {
             char command[MSG_SIZE];
-
             get_command(command);
             if (!parse_command(command)) break;
 
@@ -97,22 +91,18 @@ int main(int argc, char** argv) {
     }
 
     pthread_cancel(listen);
-
-    // Graceful close, Flag=2 means stop sending and receiving messages from this connection
     shutdown(client_socket, 2);
     return 0;
 }
 
 void *listen_to_server(void *ptr) {
-  DEBUG("HI WE'RE IN A THREAD!!");
-
   while (1) {
-    char server_response[256];
+    char server_response[256] = "";
+    char response_body[256] = "";
     int status = recv(client_socket, &server_response, sizeof (server_response), 0);
     if (status < 0) return NULL;
 
     DEBUG("\nPTHREAD: ");
-    print_response(server_response);
 
     char auth_msg[256] = "AUTHENTICATE AUTH";
     if (strstr(server_response, "AUTHENTICATE")) {
@@ -120,15 +110,16 @@ void *listen_to_server(void *ptr) {
           printf("Authentication Failure: %s\n", (char *)server_response);
           ready = 1;
           auth = 0;
-      }
-      else {
+      } else {
         DEBUG("Connection successful. Server Response: %s\n\n", server_response);
         ready = 1;
         auth = 1;
       }
+    } else {
+      int type = get_message_command(server_response, response_body);
+      print_response(type, response_body);
     }
   }
-
   return NULL;
 }
 
@@ -144,23 +135,13 @@ int authenticate(char *username) {
     format_message(AUTHENTICATE, auth_msg, username);
     DEBUG("Send AUTHENTICATION message: %s\n", auth_msg);
 
-    int send_attempts = 0;
-    while (send(client_socket, auth_msg, sizeof(auth_msg), 0) < 0 && send_attempts < CONNECTION_TIMEOUT) {
-        DEBUG("Send Failure, trying again...\n");
-        send_attempts++;
-    }
-
-    DEBUG("Authentication resend attempts: %d\n", send_attempts);
-    if (send_attempts == CONNECTION_TIMEOUT) return -1;
-
-    // recv(client_socket, &server_response, sizeof (server_response), 0);
+    if (send(client_socket, auth_msg, sizeof(auth_msg), 0) < 0)
+      DEBUG("Authentication request failed to send, exiting...\n");
 
     // Parse Server response to see if authenticated
-    // char auth[256] = "AUTH";
     while (ready == 0 || auth < 0);
     if (auth) return 1;
     else return 0;
-
 }
 
 int setup_connection(struct sockaddr_in * server_address, int client_socket, char *username) {
@@ -172,17 +153,11 @@ int setup_connection(struct sockaddr_in * server_address, int client_socket, cha
     int connection_status = connect(client_socket, (struct sockaddr *) server_address, sizeof (*server_address));
 
     if (connection_status >= 0) {
-        /* Do User-Server Authentication: try attempting pinging server for authentication of username
-         *
-         *  (timeout on 5 attempts), then interpret response, if AUTH, then username exists, if not
-         *  it is an invalid user
-        */
         if (authenticate(username))
           return 1;
         else
           return -1;
-    }
-    else {
+    } else {
         DEBUG("Failed to connect to server\n");
         return -1;
     };
@@ -203,12 +178,21 @@ int is_exit(char *command) {
 }
 
 int is_broadcast(char *command) {
-    char broadcast_str[MSG_SIZE] = "broadcast";
+    char broadcast_str[MSG_SIZE] = "BROADCAST";
     return (strcmp(command, broadcast_str) == 0);
 }
 
-void handle_broadcast() {
+int is_pmessage(char *command) {
+    char pmessage_str[MSG_SIZE] = "PRIVATE";
+    return (strcmp(command, pmessage_str) == 0);
+}
 
+int is_list(char *command) {
+    char list_str[MSG_SIZE] = "LIST";
+    return (strcmp(command, list_str) == 0);
+}
+
+void handle_broadcast() {
     char message[MSG_SIZE] = "";
     char *token = strtok(NULL, " ");
 
@@ -218,12 +202,24 @@ void handle_broadcast() {
 
         token = strtok(NULL, " ");
     }
-
     send_to_server(BROADCAST, message);
 }
 
 void handle_pmessage() {
-    char *username = strtok(NULL, " ");
+    char message[MSG_SIZE] = "";
+    char *token = strtok(NULL, " ");
+
+    while (token != NULL) {
+        strcat(message, token);
+        strcat(message, " ");
+
+        token = strtok(NULL, " ");
+    }
+    send_to_server(PRIVATE, message);
+}
+
+void handle_list() {
+    send_to_server(LIST, NULL);
 }
 
 /*
@@ -232,52 +228,105 @@ void handle_pmessage() {
  *
  * Quick Note on strtok: everytime we call it truncates the original string
  */
-
 int parse_command(char command[MSG_SIZE]) {
 
     char *cmd = strtok(command, " ");
 
     if (is_exit(cmd)) {
         return 0;
-    }
-    else if (is_broadcast(cmd)) {
+    } else if (is_broadcast(cmd)) {
         handle_broadcast();
         return 1;
-    }
-    else {
+    } else if (is_pmessage(cmd)){
         handle_pmessage();
+        return 1;
+    } else if (is_list(cmd)){
+        handle_list();
         return 1;
     }
 }
 
 int send_to_server(int type, char *body) {
     char server_response[MSG_SIZE];
+    char send_message[256] = "";
+    format_message(type, send_message, body);
+
+    DEBUG("Client Request: %s\n", send_message);
+    int send_status = send(client_socket, send_message, MSG_SIZE, 0);
 
     if (type == BROADCAST) {
-        char broadcast_message[256] = "";
-        format_message(BROADCAST, broadcast_message, body);
-        DEBUG("BROADCAST message: %s\n", broadcast_message);
+        if (send_status < 0)
+          DEBUG("[BROADCAST]: SOMETHING WENT WRONGGGGG :(");
+    } else if (type == PRIVATE) {
+        if (send_status < 0)
+          DEBUG("[PRIVATE]: SOMETHING WENT WRONGGGG :(");
 
-        int send_status = send(client_socket, broadcast_message, MSG_SIZE, 0);
-
-        if (send_status > 0) {
-            // receive data from the server:
-            // recv(client_socket, &server_response, sizeof (server_response), 0);
-            // print_response(type, server_response);
-        } else {
-            DEBUG("[BROADCAST]: SOMETHING WENT WRONGGGGG :(");
-        }
-    }
-    else if (type == PRIVATE) {
-        DEBUG("Sending PRIVATE message: %s\n", body);
-    }
-    else if (type == LIST) {
-        DEBUG("Sending LIST request\n");
+    } else if (type == LIST) {
+        if (send_status < 0)
+          DEBUG("[LIST]: SOMETHING WENT WRONGGGG :(");
     }
 }
 
-void print_response(char *server_response) {
-    printf("Server Sent: %s\n\n---------------------------------------------------------\n\n", server_response);
+void print_response(int type, char *server_response) {
+    printf("Response from server: \n---------------------------------------------------------\n\n");
+
+    if (type == BROADCAST)
+    {
+      char *username = strtok(server_response, " ");
+      char *token = strtok(NULL, " ");
+      char message[MSG_SIZE] = "";
+
+      while (token != NULL) {
+        strcat(message, token);
+        strcat(message, " ");
+        token = strtok(NULL, " ");
+      }
+      printf("Broadcast message from: %s\n", username);
+      printf("[Content]: %s\n", message);
+    }
+    else if (type == PRIVATE)
+    {
+      char *username = strtok(server_response, " ");
+      char *token = strtok(NULL, " ");
+      char message[MSG_SIZE] = "";
+
+      while (token != NULL) {
+        strcat(message, token);
+        strcat(message, " ");
+        token = strtok(NULL, " ");
+      }
+      printf("Private message from %s: %s\n", username, message);
+    }
+    else if (type == LIST)
+    {
+      printf("List of active users: \n");
+      char *token = strtok(server_response, " ");
+      while (token != NULL) {
+        printf("%s\n", token);
+        token = strtok(NULL, " ");
+      }
+    }
+    printf("\n---------------------------------------------------------\n\n");
+}
+
+int get_message_command(char *message, char *body) {
+    char *cmd = strtok(message, " ");
+    char *token = strtok(message, " ");
+
+    while (token != NULL) {
+        strcat(body, token);
+        strcat(body, " ");
+        token = strtok(NULL, " ");
+    }
+
+    if (is_broadcast(cmd))
+      return BROADCAST;
+    else if (is_pmessage(cmd))
+      return PRIVATE;
+    else if (is_list(cmd))
+      return LIST;
+    else
+      return 0;
 }
 
 void format_message(int type, char *message, char *body) {
@@ -285,15 +334,18 @@ void format_message(int type, char *message, char *body) {
       strcat(message, "AUTHENTICATE ");
       strcat(message, body);
     }
-    else if (type == BROADCAST){
+    else if (type == BROADCAST)
+    {
       strcat(message, "BROADCAST ");
       strcat(message, body);
     }
-    else if (type == PRIVATE) {
+    else if (type == PRIVATE)
+    {
       strcat(message, "PRIVATE ");
       strcat(message, body);
     }
-    else if (type == LIST) {
+    else if (type == LIST)
+    {
       strcat(message, "LIST");
     }
 }
