@@ -27,6 +27,7 @@
 #define LIST 5
 #define MSG_SIZE 256
 #define CONNECTION_TIMEOUT 5
+#define PTHREAD_WAIT 4000000000
 
 #define DEBUG(fmt, args...) (printf(fmt, ##args))
 
@@ -91,7 +92,7 @@ int main(int argc, char** argv) {
 
             // Wait for listen thread to print out message..
             int i = 0;
-            while (++i < 1000000000);
+            while (++i < PTHREAD_WAIT);
         }
     }
 
