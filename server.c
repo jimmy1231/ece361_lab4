@@ -43,7 +43,7 @@ void poll_for_client_connection(int *, int);
 
 int parse_command(char *, char *);
 void handle_request(int, char*, fd_set *, int, int, User **, int, int *);
-void handle_broadcast(fd_set *, char*, int, int);
+void handle_broadcast(fd_set *, char*, int, int, int, User **, int);
 void handle_authenticate(char*, fd_set *, User **, int *, int);
 
 int user_found(User **, char*, int);
@@ -200,7 +200,7 @@ void handle_request(int cmd, char * msg_body, fd_set * master, int fdmax, int se
       handle_authenticate(msg_body, master, users, user_id, client_socket);
   }
   else if (cmd == BROADCAST) {
-      handle_broadcast(master, msg_body, fdmax, server_socket);
+      handle_broadcast(master, msg_body, fdmax, server_socket, client_socket, users, *user_id);
       DEBUG("CMD: BROADCAST\nBODY: %s\n", msg_body);
   }
   else if (cmd == PRIVATE) {
@@ -260,12 +260,20 @@ void print_errythang(User **users, int num_users) {
 /*
  * Sends 'msg_body' to all connected users
  */
-void handle_broadcast(fd_set * master, char* msg_body, int fdmax, int server_socket) {
+void handle_broadcast(fd_set * master, char* msg_body, int fdmax, int server_socket, int sender, User ** users, int user_id) {
     int i = 0;
+    char complete_msg[256];
+
+    int sender_id = find_usr_sockID(users, sender, user_id);
+    strcpy(complete_msg, "\nBROADCAST: user_name: ");
+    strcat(complete_msg, users[sender_id]->user_name);
+    strcat(complete_msg, "\n Message: ");
+    strcat(complete_msg, msg_body);
+
     for (i = 0; i <= fdmax; i++) {
       if (FD_ISSET(i, master)) {
           if (i != server_socket) {
-            if (send(i, msg_body, MSG_SIZE, 0) == -1){
+            if (send(i, complete_msg, MSG_SIZE, 0) == -1){
                 DEBUG("ERROR SENDING BROADCAST TO: %d\n\n", i);
             }
           }
