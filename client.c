@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
     // check for error with the connection
     if (connection_status == -1) {
         DEBUG("There was an error making a connection to the remote socket, exiting... \n\n");
-        pthread_cancel(listen);
+        // pthread_cancel(listen);
     } else {
         DEBUG("Connection Established! Welcome %s\n", mock_username);
 
@@ -108,7 +108,7 @@ void *listen_to_server(void *ptr) {
   while (1) {
     char server_response[256];
     int status = recv(client_socket, &server_response, sizeof (server_response), 0);
-    if (status < 0) return NULL;
+    // if (status < 0) return NULL;
 
     DEBUG("\nPTHREAD: ");
     print_response(server_response);
