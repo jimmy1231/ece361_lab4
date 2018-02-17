@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
     // check for error with the connection
     if (connection_status == -1) {
         DEBUG("There was an error making a connection to the remote socket, exiting... \n\n");
-
+        pthread_cancel(listen);
     } else {
         DEBUG("Connection Established! Welcome %s\n", mock_username);
 
@@ -95,9 +95,7 @@ int main(int argc, char** argv) {
         }
     }
 
-    if (pthread_join(listen, NULL)) {
-      DEBUG("Error Joining Thread\n");
-    }
+    pthread_cancel(listen);
 
     // Graceful close, Flag=2 means stop sending and receiving messages from this connection
     shutdown(client_socket, 2);
@@ -109,8 +107,9 @@ void *listen_to_server(void *ptr) {
 
   while (1) {
     char server_response[256];
+    int status = recv(client_socket, &server_response, sizeof (server_response), 0);
+    if (status < 0) return NULL;
 
-    recv(client_socket, &server_response, sizeof (server_response), 0);
     DEBUG("\nPTHREAD: ");
     print_response(server_response);
 
@@ -166,7 +165,7 @@ int authenticate(char *username) {
 int setup_connection(struct sockaddr_in * server_address, int client_socket, char *username) {
      // connect to server
     server_address->sin_family = AF_INET;
-    server_address->sin_port = htons(9002);
+    server_address->sin_port = htons(9231);
     server_address->sin_addr.s_addr = INADDR_ANY;
 
     int connection_status = connect(client_socket, (struct sockaddr *) server_address, sizeof (*server_address));
