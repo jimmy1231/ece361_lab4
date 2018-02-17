@@ -33,7 +33,7 @@
  */
 
  typedef struct {
-     char * user_name;
+     char user_name[50];
      int socket_id;
 
  } User;
@@ -47,6 +47,7 @@ void handle_broadcast(fd_set *, char*, int, int);
 void handle_authenticate(char*, fd_set *, User **, int *, int);
 
 int user_found(User **, char*, int);
+void print_errythang(User **, int);
 
 int main(int argc, char** argv) {
 //    DEBUG("arg[1]: %s\n", argv[1]);
@@ -120,7 +121,6 @@ int main(int argc, char** argv) {
                  * cmd: 'BROADCAST', 'AUTHENTICATE', 'PRIVATE', 'LIST'
                  * msg_body: message to be sent
                  */
-
                 int cmd = parse_command(recv_message, msg_body);
                 handle_request(cmd, msg_body, &master, fdmax, server_socket, users, c_sock, &user_id);
                 strcpy(msg_body, "");
@@ -173,23 +173,34 @@ void handle_request(int cmd, char * msg_body, fd_set * master, int fdmax, int se
   }
 }
 
+
+int user_found(User ** users, char* username, int num_users) {
+    int i = 0;
+    for (i = 0; i < num_users; i++) {
+        if (strcmp(users[i]->user_name, username) == 0){
+          return 1;
+        }
+    }
+    return 0;
+}
+
 void handle_authenticate(char* msg_body, fd_set * master, User ** users, int * user_id, int c_sock){
     char server_message[256] = "AUTHENTICATE AUTH";
     char denied[256] = "AUTHENTICATE DENIED";
 
     //1. Add user to 'users' array if user_name not found in list of users
-    if (*user_id == 0 || !user_found(users, msg_body, *user_id + 1)){
+    if (*user_id == 0 || !user_found(users, msg_body, *user_id )){
 
         User * new_user = malloc(sizeof(User));
         users[*user_id] = new_user;
-        users[*user_id] -> user_name = msg_body;
+        strcpy(users[*user_id]->user_name, msg_body);
         users[*user_id] -> socket_id = c_sock;
 
         DEBUG("ADDING USER TO 'users': \n");
-        DEBUG("user_name: %s  |  socket_id: %d  |  user_count: %d \n\n", users[*user_id] -> user_name, users[*user_id] -> socket_id, *user_id);
+        DEBUG("user_name: %s  |  socket_id: %d  |  index: %d \n\n", users[*user_id] -> user_name, users[*user_id] -> socket_id, *user_id);
         send(c_sock, server_message, sizeof(server_message), 0);
 
-        *user_id += 1;
+        *user_id = *user_id + 1;
         // TO-DO: BROADCAST to all connected users
 
     } else {
@@ -199,14 +210,13 @@ void handle_authenticate(char* msg_body, fd_set * master, User ** users, int * u
     }
 }
 
-int user_found(User ** users, char* user_name, int num_users) {
+
+
+void print_errythang(User **users, int num_users) {
     int i = 0;
     for (i = 0; i < num_users; i++) {
-        if (strcmp(users[i]->user_name, user_name) == 0){
-          return 1;
-        }
+        DEBUG("index: %d  |  username: %s \n", i, users[i]->user_name);
     }
-    return 0;
 }
 
 /*
