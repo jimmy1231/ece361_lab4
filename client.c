@@ -20,6 +20,7 @@
 
 #include <netinet/in.h>
 
+#define AUTHENTICATE 2
 #define BROADCAST 3
 #define PRIVATE 4
 #define LIST 5
@@ -43,6 +44,9 @@ void handle_broadcast();
 int send_to_server(int, char *);
 void handle_pmessage();
 void print_response(int, char *);
+
+void format_message(int, char *, char *);
+int authenticate(char *);
 
 int client_socket;
 
@@ -83,6 +87,37 @@ void setup_sock() {
     client_socket = socket(AF_INET, SOCK_STREAM, 0);
 }
 
+int authenticate(char *username) {
+    DEBUG("Unauthenticated connection to server successful, attempting to authenticate user: %s\n", username);
+
+    char server_response[MSG_SIZE];
+    char auth_msg[256] = "";
+    format_message(AUTHENTICATE, auth_msg, username);
+    DEBUG("Send AUTHENTICATION message: %s\n", auth_msg);
+
+    int send_attempts = 0;
+    while (send(client_socket, auth_msg, sizeof(auth_msg), 0) < 0 && send_attempts < CONNECTION_TIMEOUT) {
+        DEBUG("Send Failure, trying again...\n");
+        send_attempts++;
+    }
+
+    DEBUG("Authentication resend attempts: %d\n", send_attempts);
+    if (send_attempts == CONNECTION_TIMEOUT) return -1;
+
+    recv(client_socket, &server_response, sizeof (server_response), 0);
+
+    // Parse Server response to see if authenticated
+    char auth[256] = "AUTH";
+    if (strcmp(server_response, auth) != 0) {
+        printf("Authentication Failure: %s\n", (char *)server_response);
+        return 0;
+    }
+    else {
+      DEBUG("Connection successful, Username: %s. Server Response: %s\n\n", username, server_response);
+      return 1;
+    }
+}
+
 int setup_connection(struct sockaddr_in * server_address, int client_socket, char *username) {
      // connect to server
     server_address->sin_family = AF_INET;
@@ -97,29 +132,10 @@ int setup_connection(struct sockaddr_in * server_address, int client_socket, cha
          *  (timeout on 5 attempts), then interpret response, if AUTH, then username exists, if not
          *  it is an invalid user
         */
-        char server_response[MSG_SIZE];
-        DEBUG("Unauthenticated connection to server successful, attempting to authenticate user: %s\n", username);
-
-        int send_attempts = 0;
-        while (send(client_socket, username, sizeof(username), 0) < 0 && send_attempts < CONNECTION_TIMEOUT) {
-            DEBUG("Send Failure, trying again...\n");
-            send_attempts++;
-        }
-
-        DEBUG("Authentication resend attempts: %d\n", send_attempts);
-        if (send_attempts == CONNECTION_TIMEOUT) return -1;
-
-        recv(client_socket, &server_response, sizeof (server_response), 0);
-        char auth[256] = "AUTH";
-
-        if (strcmp(server_response, auth) != 0) {
-            printf("Authentication Failure: %s\n", (char *)server_response);
-            return -1;
-        }
-        else {
-          DEBUG("Connection successful, Username: %s. Server Response: %s\n\n", username, server_response);
+        if (authenticate(username))
           return 1;
-        }
+        else
+          return -1;
     }
     else {
         DEBUG("Failed to connect to server\n");
@@ -189,12 +205,15 @@ int parse_command(char command[MSG_SIZE]) {
     }
 }
 
-int send_to_server(int type, char *message) {
+int send_to_server(int type, char *body) {
     char server_response[MSG_SIZE];
 
     if (type == BROADCAST) {
-        DEBUG("BROADCAST message: %s\n", message);
-        int send_status = send(client_socket, message, MSG_SIZE, 0);
+        char broadcast_message[256] = "";
+        format_message(BROADCAST, broadcast_message, body);
+        DEBUG("BROADCAST message: %s\n", broadcast_message);
+
+        int send_status = send(client_socket, broadcast_message, MSG_SIZE, 0);
 
         if (send_status > 0) {
             // receive data from the server:
@@ -205,7 +224,7 @@ int send_to_server(int type, char *message) {
         }
     }
     else if (type == PRIVATE) {
-        DEBUG("Sending PRIVATE message: %s\n", message);
+        DEBUG("Sending PRIVATE message: %s\n", body);
     }
     else if (type == LIST) {
         DEBUG("Sending LIST request\n");
@@ -214,4 +233,15 @@ int send_to_server(int type, char *message) {
 
 void print_response(int type, char *server_response) {
     printf("Server Sent: %s\n\n---------------------------------------------------------\n\n", server_response);
+}
+
+void format_message(int type, char *message, char *body) {
+    if (type == AUTHENTICATE) {
+      strcat(message, "AUTHENTICATE ");
+      strcat(message, body);
+    }
+    else if (type == BROADCAST){
+      strcat(message, "BROADCAST ");
+      strcat(message, body);
+    }
 }
