@@ -58,7 +58,8 @@ int find_usr_uname(User **, int, char * );
 
 
 int main(int argc, char** argv) {
-//    DEBUG("arg[1]: %s\n", argv[1]);
+    int port_num = atoi(argv[1]);
+    DEBUG("arg[1]: %s\n", argv[1]);
 
     // Create list of users
     User *users[MAX_USERS];
@@ -75,7 +76,7 @@ int main(int argc, char** argv) {
 
     // Server Bootstrap
     int server_socket;
-    setup_sock_bind(&server_socket, 9002);
+    setup_sock_bind(&server_socket, port_num);
     listen(server_socket, 5);
 
     // Add server_socket to master set
