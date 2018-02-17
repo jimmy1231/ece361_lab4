@@ -165,7 +165,7 @@ int authenticate(char *username) {
 int setup_connection(struct sockaddr_in * server_address, int client_socket, char *username) {
      // connect to server
     server_address->sin_family = AF_INET;
-    server_address->sin_port = htons(9231);
+    server_address->sin_port = htons(9002);
     server_address->sin_addr.s_addr = INADDR_ANY;
 
     int connection_status = connect(client_socket, (struct sockaddr *) server_address, sizeof (*server_address));
