@@ -42,16 +42,19 @@ void setup_sock_bind(int *, int);
 void poll_for_client_connection(int *, int);
 
 int parse_command(char *, char *);
+void parse_uname(char *, char *, char*, char*);
 void handle_request(int, char*, fd_set *, int, int, User **, int, int *);
 void handle_broadcast(fd_set *, char*, int, int, int, User **, int);
 void handle_authenticate(char*, fd_set *, User **, int *, int);
 void handle_list(User **, int, int);
+void handle_private(User**, int, char*, int);
 
 int user_found(User **, char*, int);
 void print_errythang(User **, int);
 
 void remove_user(User **, int, int*);
 int find_usr_sockID(User **, int, int);
+int find_usr_uname(User **, int, char * );
 
 
 int main(int argc, char** argv) {
@@ -133,6 +136,7 @@ int main(int argc, char** argv) {
                 int cmd = parse_command(recv_message, msg_body);
                 handle_request(cmd, msg_body, &master, fdmax, server_socket, users, c_sock, &user_id);
                 strcpy(msg_body, "");
+
               }
             }
           }
@@ -144,6 +148,7 @@ int main(int argc, char** argv) {
     return 0;
 }
 
+// Remove user c_sock from 'users' array
 void remove_user(User ** users, int c_sock, int *user_id) {
     int id = find_usr_sockID(users, c_sock, *user_id);
     DEBUG("REMOVING USER: %d | SOCKET_ID: %d | USER_NAME: %s\n", id, c_sock, users[id]->user_name);
@@ -206,11 +211,77 @@ void handle_request(int cmd, char * msg_body, fd_set * master, int fdmax, int se
   }
   else if (cmd == PRIVATE) {
       DEBUG("CMD: PRIVATE\n");
+      handle_private(users, client_socket, msg_body, *user_id);
   }
   else if (cmd == LIST) {
       handle_list(users, client_socket, *user_id);
       DEBUG("CMD: LIST\n");
   }
+}
+
+void handle_private(User ** users, int sender, char * msg_body, int user_id) {
+    char user_name[50];
+    char send_uname[50];
+    char msg[256];
+    char err_msg[256] = "PRIVATE ERROR";
+    int rcv_sock, rcv_id, send_id;
+
+    // 1. Parse out user names of sender and receiver and message
+    send_id = find_usr_sockID(users, sender, user_id);
+
+    parse_uname(user_name, msg, msg_body, users[send_id] -> user_name);
+
+    DEBUG("SENDING TO: %s\n", user_name);
+    DEBUG("MESSAGE: %s\n", msg);
+
+    // 2. Get receiver sock id
+    rcv_id = find_usr_uname(users, user_id, user_name);
+    if (rcv_id == -1) {
+        DEBUG("ERROR: USERNAME NOT IN DATABASE!!\n");
+        send(sender, err_msg, MSG_SIZE, 0);
+        return;
+    }
+    else {
+      rcv_sock = users[rcv_id]->socket_id;
+    }
+
+    // 3. Send message to receiver sock id
+    int send_status = send(rcv_sock, msg, MSG_SIZE, 0);
+    if (send_status == -1 ) {
+        DEBUG("ERROR SENDING PRIVATE MESSAGE TO: %d\n", rcv_sock);
+    } else {
+        DEBUG("SENT MSG TO: %d | USER_NAME: %s\n\n", rcv_sock, users[rcv_id]->user_name);
+    }
+}
+
+int find_usr_uname(User ** users, int user_id, char * uname) {
+    strcat(uname, " ");
+    int rcv_id = -1;
+    int i = 0;
+    for (i = 0; i < user_id; i++) {
+        if (strcmp(users[i]->user_name, uname) == 0) {
+            rcv_id = i;
+            break;
+        }
+    }
+    return rcv_id;
+}
+
+void parse_uname(char * user_name, char * msg_to_send, char * msg_body, char * send_uname) {
+    char * uname = strtok(msg_body, " ");
+    strcpy(user_name, uname);
+
+    strcpy(msg_to_send, "PRIVATE ");
+    strcat(msg_to_send, send_uname);
+    strcat(msg_to_send, " ");
+
+    char * token = strtok(NULL, " ");
+    while (token != NULL) {
+        strcat(msg_to_send, token);
+        strcat(msg_to_send, " ");
+        token = strtok(NULL, " ");
+    }
+
 }
 
 void handle_list(User ** users, int send_to, int user_id) {
@@ -289,7 +360,6 @@ void handle_broadcast(fd_set * master, char* msg_body, int fdmax, int server_soc
     int sender_id = find_usr_sockID(users, sender, user_id);
     strcpy(complete_msg, "BROADCAST ");
     strcat(complete_msg, users[sender_id]->user_name);
-    strcat(complete_msg, " ");
     strcat(complete_msg, msg_body);
 
     for (i = 0; i <= fdmax; i++) {
