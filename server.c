@@ -20,6 +20,11 @@
 
 #include <netinet/in.h>
 
+#define AUTHENTICATE 2
+#define BROADCAST 3
+#define PRIVATE 4
+#define LIST 5
+
 #define DEBUG(fmt, args...) (printf(fmt, ##args))
 /*
  *
@@ -27,6 +32,9 @@
 
 void setup_sock_bind(int *, int);
 void poll_for_client_connection(int *, int);
+
+int parse_command(char *, char *);
+void handle_request(int, char*);
 
 int main(int argc, char** argv) {
 //    DEBUG("arg[1]: %s\n", argv[1]);
@@ -83,6 +91,7 @@ int main(int argc, char** argv) {
             } else {  // Handle data from client
               char recv_message[256];
               char server_message[256] = "AUTH";
+              char msg_body[256]; //
 
               // Receive data from client and send AUTH upon success
               int recv_size = recv(c_sock, &recv_message, sizeof (recv_message), 0);
@@ -90,6 +99,16 @@ int main(int argc, char** argv) {
                 DEBUG("ERROR RECEIVING MESSAGE FROM %d\n\n", c_sock);
                 FD_CLR(c_sock, &master);
               } else {
+
+                /*
+                 * cmd: 'BROADCAST', 'AUTHENTICATE', 'PRIVATE', 'LIST'
+                 * msg_body: message to be sent
+                 */
+
+                int cmd = parse_command(recv_message, msg_body);
+                handle_request(cmd, msg_body);
+                strcpy(msg_body, "");
+
                 DEBUG("Received authentication request from client: %d, Content: %s\n", c_sock, recv_message);
                 send(c_sock, server_message, sizeof(server_message), 0);
               }
@@ -103,6 +122,42 @@ int main(int argc, char** argv) {
     return 0;
 }
 
+int parse_command(char * rcv_msg, char * msg_body) {
+    char * cmd = strtok(rcv_msg, " ");
+    int cmd_num;
+
+    if (strcmp(cmd, "LIST") == 0) return LIST;
+    else if (strcmp(cmd, "BROADCAST") == 0) cmd_num = BROADCAST;
+    else if (strcmp(cmd, "AUTHENTICATE") == 0) cmd_num = AUTHENTICATE;
+    else if (strcmp(cmd, "PRIVATE") == 0) cmd_num = PRIVATE;
+
+    cmd = strtok(NULL, " ");
+
+    // Parse out msg_body
+    while (cmd != NULL) {
+      strcat(msg_body, cmd);
+      strcat(msg_body, " ");
+      cmd = strtok(NULL, " ");
+    }
+
+    return cmd_num;
+}
+
+void handle_request(int cmd, char * msg_body) {
+  if (cmd == AUTHENTICATE){
+      DEBUG("CMD: AUTHENTICATE\nUSER_NAME: %s\n", msg_body);
+  }
+  else if (cmd == BROADCAST) {
+      DEBUG("CMD: BROADCAST\nBODY: %s\n", msg_body);
+  }
+  else if (cmd == PRIVATE) {
+      DEBUG("CMD: PRIVATE\n");
+  }
+  else if (cmd == LIST) {
+      DEBUG("CMD: LIST\n");
+  }
+}
+
 void setup_sock_bind(int *server_socket, int port_num) {
     *server_socket = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -114,7 +169,6 @@ void setup_sock_bind(int *server_socket, int port_num) {
     server_address.sin_addr.s_addr = INADDR_ANY;
 
     bind(*server_socket, (struct sockaddr*) &server_address, sizeof (server_address));
-//    printf("Hello here!");
 
 }
 
@@ -123,6 +177,6 @@ void poll_for_client_connection(int* client_socket, int server_socket) {
     // Wait state for server to receive client connection
     *client_socket = accept(server_socket, NULL, NULL);
 
-    DEBUG("NEW CONNECTION!\nConnection has been established from: %d\n\n", *client_socket);
+    DEBUG("\nNEW CONNECTION!\nConnection has been established from: %d\n\n", *client_socket);
 
 }
