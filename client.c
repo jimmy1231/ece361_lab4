@@ -244,4 +244,11 @@ void format_message(int type, char *message, char *body) {
       strcat(message, "BROADCAST ");
       strcat(message, body);
     }
+    else if (type == PRIVATE) {
+      strcat(message, "PRIVATE ");
+      strcat(message, body);
+    }
+    else if (type == LIST) {
+      strcat(message, "LIST");
+    }
 }
