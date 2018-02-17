@@ -124,8 +124,6 @@ int main(int argc, char** argv) {
                 int cmd = parse_command(recv_message, msg_body);
                 handle_request(cmd, msg_body, &master, fdmax, server_socket, users, c_sock, &user_id);
                 strcpy(msg_body, "");
-
-                DEBUG("Received authentication request from client: %d, Content: %s\n", c_sock, recv_message);
               }
             }
           }
@@ -177,6 +175,7 @@ void handle_request(int cmd, char * msg_body, fd_set * master, int fdmax, int se
 
 void handle_authenticate(char* msg_body, fd_set * master, User ** users, int * user_id, int c_sock){
     char server_message[256] = "AUTH";
+    char denied[256] = "AUTHENTICATE DENIED";
 
     //1. Add user to 'users' array if user_name not found in list of users
     if (*user_id == 0 || !user_found(users, msg_body, *user_id + 1)){
@@ -192,9 +191,10 @@ void handle_authenticate(char* msg_body, fd_set * master, User ** users, int * u
 
         *user_id += 1;
         // TO-DO: BROADCAST to all connected users
-        
+
     } else {
         printf("AUTHENTICATION ERROR: User_name %s is already taken :( \n\n", msg_body);
+        send(c_sock, denied, sizeof(denied), 0);
         FD_CLR(c_sock, master);
     }
 }
