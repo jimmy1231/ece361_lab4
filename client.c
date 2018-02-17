@@ -36,7 +36,7 @@
  */
 
 void setup_sock();
-int setup_connection(struct sockaddr_in *, int, char *);
+int setup_connection(struct sockaddr_in *, int, int, char *);
 void get_command(char []);
 int parse_command(char []);
 
@@ -61,18 +61,17 @@ int auth = -1;
 int ready = 0;
 
 int main(int argc, char** argv) {
-   // int server_addr = atoi(argv[1]);
-   // int server_port = atoi(argv[2]);
-   char *mock_username = argv[1];
-    // char *mock_username = "Jimmy";
-//    DEBUG("Config Parameters:\n   Server Address: %d\n   Server Port: %d\n   User Name: %s\n", server_addr, server_port, user_name);
+   int server_addr = atoi(argv[1]);
+   int server_port = atoi(argv[2]);
+   char *mock_username = argv[3];
+   DEBUG("Config Parameters:\n   Server Address: %d\n   Server Port: %d\n   User Name: %s\n", server_addr, server_port, mock_username);
 
     pthread_t listen;
     struct sockaddr_in server_address;
 
     setup_sock();
     pthread_create(&listen, NULL, listen_to_server, NULL);
-    int connection_status = setup_connection(&server_address, client_socket, mock_username);
+    int connection_status = setup_connection(&server_address, server_port, client_socket, mock_username);
 
     if (connection_status == -1) {
         DEBUG("There was an error making a connection to the remote socket, exiting... \n\n");
@@ -116,6 +115,7 @@ void *listen_to_server(void *ptr) {
         auth = 1;
       }
     } else {
+      DEBUG("Server Raw Response: %s\n", server_response);
       int type = get_message_command(server_response, response_body);
       print_response(type, response_body);
     }
@@ -144,10 +144,10 @@ int authenticate(char *username) {
     else return 0;
 }
 
-int setup_connection(struct sockaddr_in * server_address, int client_socket, char *username) {
+int setup_connection(struct sockaddr_in * server_address, int server_socket, int client_socket, char *username) {
      // connect to server
     server_address->sin_family = AF_INET;
-    server_address->sin_port = htons(9002);
+    server_address->sin_port = htons(server_socket);
     server_address->sin_addr.s_addr = INADDR_ANY;
 
     int connection_status = connect(client_socket, (struct sockaddr *) server_address, sizeof (*server_address));
@@ -268,7 +268,7 @@ int send_to_server(int type, char *body) {
 }
 
 void print_response(int type, char *server_response) {
-    printf("Response from server: \n---------------------------------------------------------\n\n");
+    printf("\nResponse from server: \n---------------------------------------------------------\n\n");
 
     if (type == BROADCAST)
     {
@@ -302,7 +302,7 @@ void print_response(int type, char *server_response) {
       printf("List of active users: \n");
       char *token = strtok(server_response, " ");
       while (token != NULL) {
-        printf("%s\n", token);
+        printf("   * %s\n", token);
         token = strtok(NULL, " ");
       }
     }
@@ -311,7 +311,7 @@ void print_response(int type, char *server_response) {
 
 int get_message_command(char *message, char *body) {
     char *cmd = strtok(message, " ");
-    char *token = strtok(message, " ");
+    char *token = strtok(NULL, " ");
 
     while (token != NULL) {
         strcat(body, token);
