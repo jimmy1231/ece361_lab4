@@ -154,7 +154,7 @@ void remove_user(User ** users, int c_sock, int *user_id) {
     int id = find_usr_sockID(users, c_sock, *user_id);
     DEBUG("REMOVING USER: %d | SOCKET_ID: %d | USER_NAME: %s\n", id, c_sock, users[id]->user_name);
     int i = 0;
-    free(users[i]);
+    free(users[id]);
     for (i = id; i < *user_id; i++) {
         if (i+1 != *user_id) {
             users[i] = users[i+1];
